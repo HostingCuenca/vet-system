@@ -1,0 +1,719 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ========================================
+// 1. USUARIOS Y AUTENTICACIÓN
+// ========================================
+model User {
+  id           Int      @id @default(autoincrement())
+  email        String   @unique
+  passwordHash String   @map("password_hash")
+  name         String
+  role         UserRole
+  phone        String?
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  // Relaciones
+  medicalRecords     MedicalRecord[]
+  appointments       Appointment[]   @relation("AppointmentVeterinarian")
+  appointmentsCreated Appointment[]  @relation("AppointmentCreatedBy")
+  stockMovements     StockMovement[]
+  receiptsAsVeterinarian Receipt[]   @relation("ReceiptVeterinarian")
+  receiptsCreated    Receipt[]       @relation("ReceiptCreatedBy")
+  reminders          Reminder[]      @relation("ReminderSentBy")
+  remindersCreated   Reminder[]      @relation("ReminderCreatedBy")
+  petWeights         PetWeight[]
+  vaccinations       Vaccination[]
+
+  @@map("users")
+}
+
+enum UserRole {
+  ADMIN
+  RECEPTIONIST
+  VETERINARIAN
+
+  @@map("user_role")
+}
+
+// ========================================
+// 2. PROPIETARIOS Y MASCOTAS
+// ========================================
+model Owner {
+  id                   Int    @id @default(autoincrement())
+  name                 String
+  identificationNumber String @unique @map("identification_number") // CÉDULA - BÚSQUEDA PRINCIPAL
+  phone                String?
+  email                String?
+  address              String?
+  notes                String?
+  createdAt            DateTime @default(now()) @map("created_at")
+  updatedAt            DateTime @updatedAt @map("updated_at")
+
+  // Relaciones
+  pets         Pet[]
+  appointments Appointment[]
+  receipts     Receipt[]
+  reminders    Reminder[]
+
+  @@index([identificationNumber], name: "idx_identification")
+  @@map("owners")
+}
+
+model Pet {
+  id           Int       @id @default(autoincrement())
+  internalId   String    @unique @map("internal_id") // P001, P002... - Búsqueda rápida
+  name         String
+  species      Species
+  breed        String?
+  birthDate    DateTime? @map("birth_date")
+  gender       Gender    @default(UNKNOWN)
+  color        String?
+  microchip    String?
+  photoUrl     String?   @map("photo_url") // FOTO OPCIONAL
+  currentWeight Decimal?  @map("current_weight") @db.Decimal(5, 2)
+  ownerId      Int       @map("owner_id")
+  qrCode       String?   @unique @map("qr_code") // QR FUTURO - UUID
+  notes        String?
+  active       Boolean   @default(true)
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+
+  // Relaciones
+  owner          Owner           @relation(fields: [ownerId], references: [id], onDelete: Restrict)
+  weights        PetWeight[]
+  medicalRecords MedicalRecord[]
+  appointments   Appointment[]
+  vaccinations   Vaccination[]
+  receipts       Receipt[]
+  reminders      Reminder[]
+
+  @@index([internalId], name: "idx_internal_id")
+  @@index([ownerId], name: "idx_owner_id")
+  @@index([qrCode], name: "idx_qr_code")
+  @@map("pets")
+}
+
+enum Species {
+  DOG
+  CAT
+  BIRD
+  RABBIT
+  HAMSTER
+  FISH
+  REPTILE
+  OTHER
+
+  @@map("species")
+}
+
+enum Gender {
+  MALE
+  FEMALE
+  UNKNOWN
+
+  @@map("gender")
+}
+
+model PetWeight {
+  id              Int      @id @default(autoincrement())
+  petId           Int      @map("pet_id")
+  weight          Decimal  @db.Decimal(5, 2)
+  measurementDate DateTime @map("measurement_date") @db.Date
+  recordedBy      Int      @map("recorded_by")
+  notes           String?
+
+  // Relaciones
+  pet      Pet  @relation(fields: [petId], references: [id], onDelete: Cascade)
+  recorder User @relation(fields: [recordedBy], references: [id])
+
+  @@index([petId, measurementDate], name: "idx_pet_date")
+  @@map("pet_weights")
+}
+
+// ========================================
+// 3. INVENTARIO (FLEXIBLE - BÁSICO A AVANZADO)
+// ========================================
+model ProductCategory {
+  id          Int      @id @default(autoincrement())
+  name        String
+  description String?
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  // Relaciones
+  products Product[]
+
+  @@map("product_categories")
+}
+
+model Product {
+  id                   Int             @id @default(autoincrement())
+  name                 String
+  categoryId           Int?            @map("category_id")
+  description          String?
+  unitType             UnitType        @map("unit_type")
+  unitPrice            Decimal?        @map("unit_price") @db.Decimal(10, 2)
+  currentStock         Int             @default(0) @map("current_stock")
+  minimumStock         Int             @default(5) @map("minimum_stock")
+  maximumStock         Int?            @map("maximum_stock")
+  requiresPrescription Boolean         @default(false) @map("requires_prescription")
+  supplier             String?
+  
+  // Control de lotes (OPCIONAL - para inventario avanzado)
+  trackBatches         Boolean         @default(false) @map("track_batches")
+  
+  active               Boolean         @default(true)
+  createdAt            DateTime        @default(now()) @map("created_at")
+  updatedAt            DateTime        @updatedAt @map("updated_at")
+
+  // Relaciones
+  category       ProductCategory? @relation(fields: [categoryId], references: [id])
+  batches        ProductBatch[]
+  stockMovements StockMovement[]
+  prescriptions  Prescription[]
+  receiptItems   ReceiptItem[]
+  vaccinations   Vaccination[]
+
+  @@index([name], name: "idx_product_name")
+  @@index([categoryId], name: "idx_category")
+  @@map("products")
+}
+
+enum UnitType {
+  ML
+  MG
+  TABLETS
+  UNITS
+  KG
+  GRAMS
+  CAPSULES
+
+  @@map("unit_type")
+}
+
+// Tabla para inventario AVANZADO (lotes con vencimientos)
+model ProductBatch {
+  id             Int         @id @default(autoincrement())
+  productId      Int         @map("product_id")
+  batchNumber    String      @map("batch_number")
+  expirationDate DateTime?   @map("expiration_date") @db.Date
+  quantity       Int
+  costPerUnit    Decimal?    @map("cost_per_unit") @db.Decimal(10, 4)
+  supplier       String?
+  receivedDate   DateTime    @default(now()) @map("received_date") @db.Date
+  status         BatchStatus @default(ACTIVE)
+
+  // Relaciones
+  product        Product         @relation(fields: [productId], references: [id])
+  stockMovements StockMovement[]
+
+  @@index([expirationDate], name: "idx_expiration")
+  @@index([productId, status], name: "idx_product_status")
+  @@map("product_batches")
+}
+
+enum BatchStatus {
+  ACTIVE
+  EXPIRED
+  RECALLED
+
+  @@map("batch_status")
+}
+
+model StockMovement {
+  id            Int            @id @default(autoincrement())
+  productId     Int            @map("product_id")
+  batchId       Int?           @map("batch_id") // NULL para productos sin lotes
+  movementType  MovementType   @map("movement_type")
+  quantity      Int // Positivo para entradas, negativo para salidas
+  reason        String?
+  referenceType ReferenceType  @map("reference_type")
+  referenceId   Int?           @map("reference_id")
+  costPerUnit   Decimal?       @map("cost_per_unit") @db.Decimal(10, 4)
+  performedBy   Int            @map("performed_by")
+  movementDate  DateTime       @default(now()) @map("movement_date")
+
+  // Relaciones
+  product   Product       @relation(fields: [productId], references: [id])
+  batch     ProductBatch? @relation(fields: [batchId], references: [id])
+  performer User          @relation(fields: [performedBy], references: [id])
+
+  @@index([productId, movementDate], name: "idx_product_date")
+  @@index([referenceType, referenceId], name: "idx_reference")
+  @@map("stock_movements")
+}
+
+enum MovementType {
+  IN
+  OUT
+  ADJUSTMENT
+  EXPIRED
+  LOST
+
+  @@map("movement_type")
+}
+
+enum ReferenceType {
+  PURCHASE
+  SALE
+  MEDICAL_RECORD
+  ADJUSTMENT
+  EXPIRATION
+
+  @@map("reference_type")
+}
+
+// ========================================
+// 4. HISTORIALES MÉDICOS
+// ========================================
+model MedicalRecord {
+  id             Int      @id @default(autoincrement())
+  petId          Int      @map("pet_id")
+  appointmentId  Int?     @map("appointment_id")
+  veterinarianId Int      @map("veterinarian_id")
+  visitDate      DateTime @map("visit_date") @db.Date
+  visitTime      DateTime? @map("visit_time") @db.Time
+  reasonForVisit String   @map("reason_for_visit")
+  symptoms       String?
+  diagnosis      String?
+  treatment      String?
+  weight         Decimal? @db.Decimal(5, 2)
+  temperature    Decimal? @db.Decimal(4, 2)
+  notes          String?
+  followUpDate   DateTime? @map("follow_up_date") @db.Date
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  // Relaciones
+  pet           Pet            @relation(fields: [petId], references: [id])
+  veterinarian  User           @relation(fields: [veterinarianId], references: [id])
+  prescriptions Prescription[]
+  anamnesis     Anamnesis?
+  vitalSigns    VitalSigns?
+  systemsReview SystemsReview?
+
+  @@index([petId, visitDate], name: "idx_pet_visit_date")
+  @@index([veterinarianId, visitDate], name: "idx_vet_visit_date")
+  @@map("medical_records")
+}
+
+model Prescription {
+  id               Int    @id @default(autoincrement())
+  medicalRecordId  Int    @map("medical_record_id")
+  productId        Int    @map("product_id")
+  quantity         Decimal @db.Decimal(8, 2)
+  dosage           String // "1 tableta cada 8 horas"
+  frequency        String? // "Cada 8 horas"
+  duration         String? // "7 días"
+  instructions     String?
+  startDate        DateTime @default(now()) @map("start_date") @db.Date
+  endDate          DateTime? @map("end_date") @db.Date
+
+  // Relaciones
+  medicalRecord MedicalRecord @relation(fields: [medicalRecordId], references: [id], onDelete: Cascade)
+  product       Product       @relation(fields: [productId], references: [id])
+
+  @@index([medicalRecordId], name: "idx_medical_record")
+  @@map("prescriptions")
+}
+
+// ========================================
+// FICHAS CLÍNICAS - ANAMNESIS COMPLETA
+// ========================================
+model Anamnesis {
+  id                   Int      @id @default(autoincrement())
+  medicalRecordId      Int      @unique @map("medical_record_id")
+  
+  // Historia de Desparasitación
+  lastDewormingDate    DateTime? @map("last_deworming_date") @db.Date
+  dewormingFrequency   String?   @map("deworming_frequency") // "Cada 3 meses", "Cada 6 meses"
+  dewormingProducts    String?   @map("deworming_products") // "Drontal, Bravecto"
+  
+  // Historia de Enfermedades Previas
+  previousIllnesses    String?   @map("previous_illnesses")
+  chronicConditions    String?   @map("chronic_conditions")
+  allergies            String?   // Alergias conocidas
+  surgicalHistory      String?   @map("surgical_history") // Cirugías previas
+  
+  // Tratamientos Previos y Actuales
+  previousTreatments   String?   @map("previous_treatments")
+  currentMedications   String?   @map("current_medications")
+  
+  // Alimentación
+  feedType             String?   @map("feed_type") // "Concentrado", "Casera", "Mixta"
+  feedBrand            String?   @map("feed_brand")
+  feedingSchedule      String?   @map("feeding_schedule") // "2 veces al día"
+  specialDiet          Boolean   @default(false) @map("special_diet")
+  dietDetails          String?   @map("diet_details")
+  appetiteChanges      String?   @map("appetite_changes")
+  
+  // Historia Reproductiva
+  reproductiveStatus   String?   @map("reproductive_status") // "Entero", "Castrado", "Esterilizado"
+  castrationDate       DateTime? @map("castration_date") @db.Date
+  lastHeatDate         DateTime? @map("last_heat_date") @db.Date // Para hembras
+  pregnancyHistory     Int?      @default(0) @map("pregnancy_history") // Número de gestaciones
+  lastBirthDate        DateTime? @map("last_birth_date") @db.Date
+  
+  // Evolución y Comportamiento
+  behaviorChanges      String?   @map("behavior_changes")
+  activityLevel        String?   @map("activity_level") // "Alta", "Media", "Baja"
+  exerciseRoutine      String?   @map("exercise_routine")
+  sleepPatterns        String?   @map("sleep_patterns")
+  
+  // Ambiente y Vivienda
+  housingType          String?   @map("housing_type") // "Casa", "Apartamento", "Finca"
+  outdoorAccess        Boolean   @default(false) @map("outdoor_access")
+  otherPets            String?   @map("other_pets") // Descripción de otras mascotas
+  
+  // Historial de Consultas
+  lastVetVisit         DateTime? @map("last_vet_visit") @db.Date
+  reasonLastVisit      String?   @map("reason_last_visit")
+  
+  createdAt            DateTime  @default(now()) @map("created_at")
+  updatedAt            DateTime  @updatedAt @map("updated_at")
+
+  // Relaciones
+  medicalRecord MedicalRecord @relation(fields: [medicalRecordId], references: [id], onDelete: Cascade)
+
+  @@map("anamnesis")
+}
+
+// ========================================
+// FICHAS CLÍNICAS - SIGNOS VITALES Y EXAMEN FÍSICO
+// ========================================
+model VitalSigns {
+  id                   Int      @id @default(autoincrement())
+  medicalRecordId      Int      @unique @map("medical_record_id")
+  
+  // Signos Vitales Básicos
+  heartRate            Int?     @map("heart_rate") // ppm
+  respiratoryRate      Int?     @map("respiratory_rate") // rpm
+  temperature          Decimal? @db.Decimal(4, 2) // °C
+  weight               Decimal? @db.Decimal(5, 2) // kg
+  
+  // Estado Físico General
+  bodyConditionScore   Int?     @map("body_condition_score") // 1-5 escala
+  hydrationStatus      String?  @map("hydration_status") // "Normal", "Leve", "Moderada", "Severa"
+  mentalStatus         String?  @map("mental_status") // "Alerta", "Deprimido", "Letárgico", "Comatoso"
+  postureGait          String?  @map("posture_gait") // Descripción de postura y marcha
+  
+  // Examen Cardiovascular
+  heartSounds          String?  @map("heart_sounds") // "Normal", "Soplo", "Arritmia"
+  pulseQuality         String?  @map("pulse_quality") // "Fuerte", "Débil", "Filiforme"
+  mucousMembranes      String?  @map("mucous_membranes") // "Rosadas", "Pálidas", "Cianóticas"
+  capillaryRefillTime  String?  @map("capillary_refill_time") // "< 2 segundos", "> 3 segundos"
+  
+  // Ganglios Linfáticos
+  lymphNodes           String?  @map("lymph_nodes") // "Normales", "Aumentados", "Duros"
+  lymphNodeDetails     String?  @map("lymph_node_details")
+  
+  // Estado General
+  alertness            String?  // "Alerta", "Letárgico", "Estuporoso", "Comatoso"
+  temperament          String?  // "Dócil", "Nervioso", "Agresivo"
+  painLevel            String?  @map("pain_level") // "Ausente", "Leve", "Moderado", "Severo"
+  
+  createdAt            DateTime @default(now()) @map("created_at")
+  updatedAt            DateTime @updatedAt @map("updated_at")
+
+  // Relaciones
+  medicalRecord MedicalRecord @relation(fields: [medicalRecordId], references: [id], onDelete: Cascade)
+
+  @@map("vital_signs")
+}
+
+// ========================================
+// FICHAS CLÍNICAS - REVISIÓN POR SISTEMAS
+// ========================================
+model SystemsReview {
+  id                   Int      @id @default(autoincrement())
+  medicalRecordId      Int      @unique @map("medical_record_id")
+  
+  // Sistema Tegumentario (Piel y Pelo)
+  skinCondition        String?  @map("skin_condition") // "N", "AN", "NE"
+  skinFindings         String?  @map("skin_findings") // Descripción detallada
+  coatQuality          String?  @map("coat_quality") // "Brillante", "Opaco", "Graso"
+  skinLesions          String?  @map("skin_lesions") // Descripción de lesiones
+  
+  // Sistema Respiratorio
+  respiratorySystem    String?  @map("respiratory_system") // "N", "AN", "NE"
+  lungSounds           String?  @map("lung_sounds") // "Normales", "Crepitantes", "Sibilantes"
+  breathingPattern     String?  @map("breathing_pattern") // "Normal", "Disnea", "Taquipnea"
+  coughPresent         Boolean  @default(false) @map("cough_present")
+  nasalDischarge       String?  @map("nasal_discharge") // "Ausente", "Seroso", "Purulento"
+  
+  // Sistema Digestivo
+  digestiveSystem      String?  @map("digestive_system") // "N", "AN", "NE"
+  oralExamination      String?  @map("oral_examination") // Estado de dientes, encías, lengua
+  abdominalPalpation   String?  @map("abdominal_palpation") // "Normal", "Distendido", "Doloroso"
+  intestinalSounds     String?  @map("intestinal_sounds") // "Normales", "Aumentados", "Disminuidos"
+  
+  // Sistema Genitourinario
+  genitourinarySystem  String?  @map("genitourinary_system") // "N", "AN", "NE"
+  kidneyPalpation      String?  @map("kidney_palpation") // "Normal", "Aumentado", "Doloroso"
+  bladderPalpation     String?  @map("bladder_palpation") // "Normal", "Distendida", "Dolorosa"
+  genitalExamination   String?  @map("genital_examination")
+  urination            String?  // "Normal", "Poliuria", "Disuria"
+  
+  // Sistema Musculoesquelético
+  musculoskeletalSystem String? @map("musculoskeletal_system") // "N", "AN", "NE"
+  jointMobility         String? @map("joint_mobility") // "Normal", "Limitada", "Dolorosa"
+  muscleCondition       String? @map("muscle_condition") // "Normal", "Atrofia", "Hipertrofia"
+  gaitAssessment        String? @map("gait_assessment") // "Normal", "Cojera", "Inestabilidad"
+  spinalPalpation       String? @map("spinal_palpation")
+  
+  // Sistema Nervioso
+  nervousSystem        String?  @map("nervous_system") // "N", "AN", "NE"
+  mentalState          String?  @map("mental_state") // "Normal", "Deprimido", "Excitado"
+  reflexesAssessment   String?  @map("reflexes_assessment") // "Normales", "Aumentados", "Disminuidos"
+  coordinationTest     String?  @map("coordination_test") // "Normal", "Ataxia", "Incoordinación"
+  
+  // Órganos de los Sentidos
+  eyeExamination       String?  @map("eye_examination") // "Normal", "Conjuntivitis", "Cataratas"
+  earExamination       String?  @map("ear_examination") // "Normal", "Otitis", "Cerumen"
+  
+  // Observaciones Generales
+  generalObservations  String?  @map("general_observations")
+  additionalFindings   String?  @map("additional_findings")
+  
+  createdAt            DateTime @default(now()) @map("created_at")
+  updatedAt            DateTime @updatedAt @map("updated_at")
+
+  // Relaciones
+  medicalRecord MedicalRecord @relation(fields: [medicalRecordId], references: [id], onDelete: Cascade)
+
+  @@map("systems_review")
+}
+
+model Vaccination {
+  id             Int      @id @default(autoincrement())
+  petId          Int      @map("pet_id")
+  productId      Int?     @map("product_id") // Vacuna del inventario
+  vaccineName    String   @map("vaccine_name")
+  veterinarianId Int      @map("veterinarian_id")
+  vaccinationDate DateTime @map("vaccination_date") @db.Date
+  nextDueDate    DateTime? @map("next_due_date") @db.Date
+  batchNumber    String?  @map("batch_number")
+  notes          String?
+
+  // Relaciones
+  pet          Pet      @relation(fields: [petId], references: [id])
+  product      Product? @relation(fields: [productId], references: [id])
+  veterinarian User     @relation(fields: [veterinarianId], references: [id])
+
+  @@index([petId, nextDueDate], name: "idx_pet_next_due")
+  @@map("vaccinations")
+}
+
+// ========================================
+// 5. SISTEMA DE CITAS
+// ========================================
+model Appointment {
+  id              Int             @id @default(autoincrement())
+  petId           Int             @map("pet_id")
+  ownerId         Int             @map("owner_id")
+  veterinarianId  Int?            @map("veterinarian_id") // NULL = cualquier veterinario
+  appointmentDate DateTime        @map("appointment_date") @db.Date
+  appointmentTime DateTime        @map("appointment_time") @db.Time
+  durationMinutes Int             @default(30) @map("duration_minutes")
+  appointmentType AppointmentType @default(CONSULTATION) @map("appointment_type")
+  status          AppointmentStatus @default(SCHEDULED)
+  reason          String?
+  notes           String?
+  createdBy       Int             @map("created_by")
+  createdAt       DateTime        @default(now()) @map("created_at")
+  updatedAt       DateTime        @updatedAt @map("updated_at")
+
+  // Relaciones
+  pet          Pet  @relation(fields: [petId], references: [id])
+  owner        Owner @relation(fields: [ownerId], references: [id])
+  veterinarian User? @relation("AppointmentVeterinarian", fields: [veterinarianId], references: [id])
+  creator      User  @relation("AppointmentCreatedBy", fields: [createdBy], references: [id])
+
+  @@index([appointmentDate, appointmentTime], name: "idx_date_time")
+  @@index([veterinarianId, appointmentDate], name: "idx_vet_date")
+  @@map("appointments")
+}
+
+enum AppointmentType {
+  CONSULTATION
+  VACCINATION
+  SURGERY
+  CHECKUP
+  EMERGENCY
+  GROOMING
+
+  @@map("appointment_type")
+}
+
+enum AppointmentStatus {
+  SCHEDULED
+  CONFIRMED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+  NO_SHOW
+
+  @@map("appointment_status")
+}
+
+// ========================================
+// 6. RECORDATORIOS (MANUAL/VISUAL)
+// ========================================
+model Reminder {
+  id           Int           @id @default(autoincrement())
+  petId        Int           @map("pet_id")
+  ownerId      Int           @map("owner_id")
+  reminderType ReminderType  @map("reminder_type")
+  title        String
+  message      String
+  dueDate      DateTime      @map("due_date") @db.Date
+  dueTime      DateTime?     @map("due_time") @db.Time
+  priority     Priority      @default(MEDIUM)
+  status       ReminderStatus @default(PENDING)
+  method       ContactMethod @default(WHATSAPP)
+  sentDate     DateTime?     @map("sent_date")
+  sentBy       Int?          @map("sent_by")
+  createdBy    Int           @map("created_by")
+  createdAt    DateTime      @default(now()) @map("created_at")
+
+  // Relaciones
+  pet     Pet   @relation(fields: [petId], references: [id])
+  owner   Owner @relation(fields: [ownerId], references: [id])
+  sender  User? @relation("ReminderSentBy", fields: [sentBy], references: [id])
+  creator User  @relation("ReminderCreatedBy", fields: [createdBy], references: [id])
+
+  @@index([dueDate, status], name: "idx_due_status")
+  @@index([petId, reminderType], name: "idx_pet_type")
+  @@map("reminders")
+}
+
+enum ReminderType {
+  MEDICATION
+  VACCINATION
+  CHECKUP
+  APPOINTMENT
+  CUSTOM
+
+  @@map("reminder_type")
+}
+
+enum Priority {
+  LOW
+  MEDIUM
+  HIGH
+
+  @@map("priority")
+}
+
+enum ReminderStatus {
+  PENDING
+  SENT
+  COMPLETED
+  CANCELLED
+
+  @@map("reminder_status")
+}
+
+enum ContactMethod {
+  WHATSAPP
+  EMAIL
+  PHONE
+  INTERNAL
+
+  @@map("contact_method")
+}
+
+// ========================================
+// 7. SERVICIOS Y COMPROBANTES
+// ========================================
+model Service {
+  id          Int      @id @default(autoincrement())
+  name        String
+  description String?
+  basePrice   Decimal? @map("base_price") @db.Decimal(10, 2)
+  category    String?
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@map("services")
+}
+
+model Receipt {
+  id             Int           @id @default(autoincrement())
+  receiptNumber  String        @unique @map("receipt_number") // VET001, VET002...
+  petId          Int           @map("pet_id")
+  ownerId        Int           @map("owner_id")
+  veterinarianId Int?          @map("veterinarian_id")
+  issueDate      DateTime      @map("issue_date") @db.Date
+  totalAmount    Decimal       @map("total_amount") @db.Decimal(10, 2)
+  paymentMethod  PaymentMethod @default(CASH) @map("payment_method")
+  paymentStatus  PaymentStatus @default(PAID) @map("payment_status")
+  notes          String?
+  createdBy      Int           @map("created_by")
+  createdAt      DateTime      @default(now()) @map("created_at")
+
+  // Relaciones
+  pet          Pet           @relation(fields: [petId], references: [id])
+  owner        Owner         @relation(fields: [ownerId], references: [id])
+  veterinarian User?         @relation("ReceiptVeterinarian", fields: [veterinarianId], references: [id])
+  creator      User          @relation("ReceiptCreatedBy", fields: [createdBy], references: [id])
+  items        ReceiptItem[]
+
+  @@index([issueDate], name: "idx_issue_date")
+  @@index([receiptNumber], name: "idx_receipt_number")
+  @@map("receipts")
+}
+
+enum PaymentMethod {
+  CASH
+  CARD
+  TRANSFER
+  CREDIT
+
+  @@map("payment_method")
+}
+
+enum PaymentStatus {
+  PAID
+  PENDING
+  PARTIAL
+  CANCELLED
+
+  @@map("payment_status")
+}
+
+model ReceiptItem {
+  id          Int      @id @default(autoincrement())
+  receiptId   Int      @map("receipt_id")
+  productId   Int?     @map("product_id") // NULL para servicios
+  description String
+  quantity    Decimal  @db.Decimal(8, 2)
+  unitPrice   Decimal  @map("unit_price") @db.Decimal(10, 2)
+  totalPrice  Decimal  @map("total_price") @db.Decimal(10, 2)
+  itemType    ItemType @default(SERVICE) @map("item_type")
+
+  // Relaciones
+  receipt Receipt  @relation(fields: [receiptId], references: [id], onDelete: Cascade)
+  product Product? @relation(fields: [productId], references: [id])
+
+  @@map("receipt_items")
+}
+
+enum ItemType {
+  PRODUCT
+  SERVICE
+  MEDICATION
+
+  @@map("item_type")
+}
