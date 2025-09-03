@@ -1,3 +1,4 @@
+
 // This is your Prisma schema file,
 // learn more about it in the docs: https://pris.ly/d/prisma-schema
 
@@ -35,6 +36,13 @@ model User {
   remindersCreated   Reminder[]      @relation("ReminderCreatedBy")
   petWeights         PetWeight[]
   vaccinations       Vaccination[]
+  
+  // Nuevas relaciones para sistema de caja
+  sessionsOpened     CashSession[]   @relation("SessionOpenedBy")
+  sessionsClosed     CashSession[]   @relation("SessionClosedBy")
+  salesAsVeterinarian Sale[]         @relation("SaleVeterinarian")
+  salesAsSeller      Sale[]          @relation("SaleSoldBy")
+  cashMovements      CashMovement[]  @relation("CashMovementPerformed")
 
   @@map("users")
 }
@@ -66,6 +74,7 @@ model Owner {
   appointments Appointment[]
   receipts     Receipt[]
   reminders    Reminder[]
+  sales        Sale[]
 
   @@index([identificationNumber], name: "idx_identification")
   @@map("owners")
@@ -98,6 +107,7 @@ model Pet {
   vaccinations   Vaccination[]
   receipts       Receipt[]
   reminders      Reminder[]
+  sales          Sale[]
 
   @@index([internalId], name: "idx_internal_id")
   @@index([ownerId], name: "idx_owner_id")
@@ -184,6 +194,7 @@ model Product {
   prescriptions  Prescription[]
   receiptItems   ReceiptItem[]
   vaccinations   Vaccination[]
+  saleItems      SaleItem[]
 
   @@index([name], name: "idx_product_name")
   @@index([categoryId], name: "idx_category")
@@ -652,6 +663,7 @@ model Service {
 model Receipt {
   id             Int           @id @default(autoincrement())
   receiptNumber  String        @unique @map("receipt_number") // VET001, VET002...
+  saleId         Int?          @unique @map("sale_id") // Conecta con Sale si viene de caja
   petId          Int           @map("pet_id")
   ownerId        Int           @map("owner_id")
   veterinarianId Int?          @map("veterinarian_id")
@@ -664,6 +676,7 @@ model Receipt {
   createdAt      DateTime      @default(now()) @map("created_at")
 
   // Relaciones
+  sale         Sale?         @relation(fields: [saleId], references: [id])
   pet          Pet           @relation(fields: [petId], references: [id])
   owner        Owner         @relation(fields: [ownerId], references: [id])
   veterinarian User?         @relation("ReceiptVeterinarian", fields: [veterinarianId], references: [id])
@@ -717,3 +730,181 @@ enum ItemType {
 
   @@map("item_type")
 }
+
+// ========================================
+// 8. SISTEMA DE CAJA COMPLETO
+// ========================================
+
+// Cajas registradoras (si hay múltiples puntos de venta)
+model CashRegister {
+  id          Int      @id @default(autoincrement())
+  name        String   // "Caja Principal", "Caja Consulta", etc.
+  location    String?  // "Recepción", "Consultorio 1", etc.
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  // Relaciones
+  sessions CashSession[]
+
+  @@map("cash_registers")
+}
+
+// Sesiones de caja (apertura/cierre por turno/usuario)
+model CashSession {
+  id               Int            @id @default(autoincrement())
+  sessionNumber    String         @unique // CSH240101001, CSH240101002
+  cashRegisterId   Int            @map("cash_register_id")
+  openedBy         Int            @map("opened_by")
+  closedBy         Int?           @map("closed_by")
+  openedAt         DateTime       @default(now()) @map("opened_at")
+  closedAt         DateTime?      @map("closed_at")
+  status           SessionStatus  @default(OPEN)
+  
+  // Montos de apertura
+  initialCash      Decimal        @map("initial_cash") @db.Decimal(10, 2)
+  
+  // Montos calculados al cierre
+  expectedCash     Decimal?       @map("expected_cash") @db.Decimal(10, 2)
+  actualCash       Decimal?       @map("actual_cash") @db.Decimal(10, 2)
+  difference       Decimal?       @db.Decimal(10, 2) // actualCash - expectedCash
+  
+  // Totales de la sesión
+  totalSales       Decimal        @default(0) @map("total_sales") @db.Decimal(10, 2)
+  totalCash        Decimal        @default(0) @map("total_cash") @db.Decimal(10, 2)
+  totalCard        Decimal        @default(0) @map("total_card") @db.Decimal(10, 2)
+  totalTransfer    Decimal        @default(0) @map("total_transfer") @db.Decimal(10, 2)
+  totalExpenses    Decimal        @default(0) @map("total_expenses") @db.Decimal(10, 2)
+  
+  notes            String?        // Observaciones del cierre
+  createdAt        DateTime       @default(now()) @map("created_at")
+  updatedAt        DateTime       @updatedAt @map("updated_at")
+
+  // Relaciones
+  cashRegister   CashRegister    @relation(fields: [cashRegisterId], references: [id])
+  openedByUser   User            @relation("SessionOpenedBy", fields: [openedBy], references: [id])
+  closedByUser   User?           @relation("SessionClosedBy", fields: [closedBy], references: [id])
+  sales          Sale[]
+  cashMovements  CashMovement[]
+  services       ServiceCatalog[] // Servicios disponibles para esta sesión
+
+  @@map("cash_sessions")
+}
+
+enum SessionStatus {
+  OPEN
+  CLOSED
+  CANCELLED
+
+  @@map("session_status")
+}
+
+// Catálogo de servicios (consultas, cirugías, etc.)
+model ServiceCatalog {
+  id            Int      @id @default(autoincrement())
+  name          String   // "Consulta General", "Cirugía", "Vacunación"
+  description   String?
+  price         Decimal  @db.Decimal(10, 2)
+  category      String?  // "Consulta", "Cirugía", "Emergencia"
+  active        Boolean  @default(true)
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  // Relaciones
+  saleItems     SaleItem[]
+  sessions      CashSession[]
+
+  @@map("service_catalog")
+}
+
+// Ventas individuales (reemplaza Receipt pero más específico para caja)
+model Sale {
+  id              Int           @id @default(autoincrement())
+  saleNumber      String        @unique // VTA240101001, VTA240101002
+  cashSessionId   Int           @map("cash_session_id")
+  petId           Int?          @map("pet_id") // Opcional para productos sin mascota
+  ownerId         Int?          @map("owner_id")
+  veterinarianId  Int?          @map("veterinarian_id")
+  soldBy          Int           @map("sold_by") // Usuario que realizó la venta
+  
+  saleDate        DateTime      @default(now()) @map("sale_date")
+  paymentMethod   PaymentMethod @default(CASH) @map("payment_method")
+  paymentStatus   PaymentStatus @default(PAID) @map("payment_status")
+  
+  subtotal        Decimal       @db.Decimal(10, 2)
+  discount        Decimal       @default(0) @db.Decimal(10, 2)
+  tax             Decimal       @default(0) @db.Decimal(10, 2)
+  total           Decimal       @db.Decimal(10, 2)
+  
+  notes           String?
+  createdAt       DateTime      @default(now()) @map("created_at")
+  updatedAt       DateTime      @updatedAt @map("updated_at")
+
+  // Relaciones
+  cashSession  CashSession @relation(fields: [cashSessionId], references: [id])
+  pet          Pet?        @relation(fields: [petId], references: [id])
+  owner        Owner?      @relation(fields: [ownerId], references: [id])
+  veterinarian User?       @relation("SaleVeterinarian", fields: [veterinarianId], references: [id])
+  soldByUser   User        @relation("SaleSoldBy", fields: [soldBy], references: [id])
+  items        SaleItem[]
+  receipt      Receipt?    // Se genera automáticamente al completar la venta
+
+  @@map("sales")
+}
+
+// Items de venta (productos y servicios)
+model SaleItem {
+  id          Int      @id @default(autoincrement())
+  saleId      Int      @map("sale_id")
+  
+  // Producto (si aplica)
+  productId   Int?     @map("product_id")
+  
+  // Servicio (si aplica)
+  serviceId   Int?     @map("service_id")
+  
+  // Datos del item al momento de la venta
+  itemType    ItemType // PRODUCT, SERVICE, MEDICATION
+  description String   // Descripción fija al momento de venta
+  quantity    Decimal  @db.Decimal(8, 2)
+  unitPrice   Decimal  @map("unit_price") @db.Decimal(10, 2)
+  discount    Decimal  @default(0) @db.Decimal(10, 2)
+  total       Decimal  @db.Decimal(10, 2)
+  
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  // Relaciones
+  sale     Sale            @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  product  Product?        @relation(fields: [productId], references: [id])
+  service  ServiceCatalog? @relation(fields: [serviceId], references: [id])
+
+  @@map("sale_items")
+}
+
+// Movimientos de efectivo (ingresos/egresos adicionales)
+model CashMovement {
+  id            Int          @id @default(autoincrement())
+  cashSessionId Int          @map("cash_session_id")
+  movementType  MovementType @map("movement_type") // IN, OUT
+  amount        Decimal      @db.Decimal(10, 2)
+  reason        String       // "Cambio de turno", "Pago proveedor", "Fondo adicional"
+  category      String?      // "Operacional", "Administrativo", etc.
+  reference     String?      // Número de factura, recibo, etc.
+  performedBy   Int          @map("performed_by")
+  movementDate  DateTime     @default(now()) @map("movement_date")
+  notes         String?
+  
+  createdAt     DateTime     @default(now()) @map("created_at")
+
+  // Relaciones
+  cashSession CashSession @relation(fields: [cashSessionId], references: [id])
+  performer   User        @relation("CashMovementPerformed", fields: [performedBy], references: [id])
+
+  @@map("cash_movements")
+}
+
+// Actualizar User model con nuevas relaciones
+// (Esto se debe agregar a las relaciones existentes del modelo User)
+
+// Actualizar Receipt model para conectar con Sale
+// (Agregar relación saleId al modelo Receipt existente)

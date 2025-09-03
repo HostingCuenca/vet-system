@@ -19,7 +19,9 @@ const navigation: NavItem[] = [
   { name: 'Citas', href: '/dashboard/appointments', icon: '📅', roles: ['ADMIN', 'VETERINARIAN', 'RECEPTIONIST'] },
   { name: 'Inventario', href: '/dashboard/inventory', icon: '📦', roles: ['ADMIN', 'VETERINARIAN', 'RECEPTIONIST'] },
   { name: 'Recordatorios', href: '/dashboard/reminders', icon: '🔔', roles: ['ADMIN', 'VETERINARIAN', 'RECEPTIONIST'] },
-  { name: 'Comprobantes', href: '/dashboard/receipts', icon: '💰', roles: ['ADMIN', 'RECEPTIONIST'] },
+  { name: 'Ventas', href: '/dashboard/sales', icon: '🛒', roles: ['ADMIN', 'VETERINARIAN', 'RECEPTIONIST'] },
+  { name: 'Cajas', href: '/dashboard/cash', icon: '💰', roles: ['ADMIN', 'RECEPTIONIST'] },
+  { name: 'Comprobantes', href: '/dashboard/receipts', icon: '🧾', roles: ['ADMIN', 'RECEPTIONIST'] },
   { name: 'Usuarios', href: '/dashboard/users', icon: '👤', roles: ['ADMIN'] },
   { name: 'Configuración', href: '/dashboard/settings', icon: '⚙️', roles: ['ADMIN'] },
 ]
