@@ -173,7 +173,7 @@ function generateReceiptHTML(receipt: any): string {
         
         .header {
           text-align: center;
-          border-bottom: 3px solid #2563eb;
+          border-bottom: 2px solid #374151;
           padding-bottom: 20px;
           margin-bottom: 30px;
         }
@@ -181,7 +181,7 @@ function generateReceiptHTML(receipt: any): string {
         .clinic-name {
           font-size: 28px;
           font-weight: bold;
-          color: #2563eb;
+          color: #374151;
           margin: 0;
         }
         
@@ -199,6 +199,7 @@ function generateReceiptHTML(receipt: any): string {
           padding: 8px 16px;
           border-radius: 6px;
           display: inline-block;
+          border: 1px solid #d1d5db;
         }
         
         .info-section {
@@ -212,15 +213,17 @@ function generateReceiptHTML(receipt: any): string {
           background: #f9fafb;
           padding: 20px;
           border-radius: 8px;
-          border-left: 4px solid #10b981;
+          border: 1px solid #e5e7eb;
         }
         
         .info-title {
           font-weight: bold;
-          color: #10b981;
+          color: #374151;
           font-size: 14px;
           text-transform: uppercase;
           margin-bottom: 10px;
+          border-bottom: 1px solid #e5e7eb;
+          padding-bottom: 5px;
         }
         
         .info-row {
@@ -336,12 +339,12 @@ function generateReceiptHTML(receipt: any): string {
         }
         
         .total-final {
-          border-top: 2px solid #2563eb;
+          border-top: 2px solid #374151;
           padding-top: 8px;
           margin-top: 12px;
           font-size: 18px;
           font-weight: bold;
-          color: #2563eb;
+          color: #374151;
         }
         
         .footer {
@@ -388,7 +391,7 @@ function generateReceiptHTML(receipt: any): string {
 
       <div class="info-section">
         <div class="info-box">
-          <div class="info-title">📋 Información del Recibo</div>
+          <div class="info-title">Información del Recibo</div>
           <div class="info-row">
             <span class="info-label">Fecha:</span>
             <span class="info-value">${formatDate(receipt.issueDate)}</span>
@@ -414,7 +417,7 @@ function generateReceiptHTML(receipt: any): string {
         </div>
 
         <div class="info-box">
-          <div class="info-title">👤 Información del Cliente</div>
+          <div class="info-title">Información del Cliente</div>
           ${receipt.owner ? `
           <div class="info-row">
             <span class="info-label">Propietario:</span>
@@ -462,7 +465,7 @@ function generateReceiptHTML(receipt: any): string {
       </div>
 
       <div class="items-section">
-        <h2 class="section-title">📦 Detalle de Items</h2>
+        <h2 class="section-title">Detalle de Items</h2>
         <table class="items-table">
           <thead>
             <tr>
@@ -527,8 +530,8 @@ function generateReceiptHTML(receipt: any): string {
       </div>
 
       ${receipt.notes ? `
-      <div style="margin-top: 30px; padding: 20px; background: #fef3c7; border-radius: 8px; border-left: 4px solid #f59e0b;">
-        <strong style="color: #92400e;">📝 Notas:</strong>
+      <div style="margin-top: 30px; padding: 20px; background: #fef3c7; border-radius: 8px; border: 1px solid #f59e0b;">
+        <strong style="color: #92400e;">Notas:</strong>
         <p style="margin: 8px 0; color: #92400e;">${receipt.notes}</p>
       </div>
       ` : ''}

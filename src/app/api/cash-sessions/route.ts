@@ -17,6 +17,22 @@ export async function GET() {
             id: true,
             name: true
           }
+        },
+        sales: {
+          select: {
+            id: true,
+            total: true,
+            createdAt: true
+          }
+        },
+        cashMovements: {
+          select: {
+            id: true,
+            movementType: true,
+            amount: true,
+            reason: true,
+            createdAt: true
+          }
         }
       },
       orderBy: { openedAt: 'desc' }

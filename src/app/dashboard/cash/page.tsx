@@ -1,6 +1,8 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { useSession } from 'next-auth/react'
+import { useRouter } from 'next/navigation'
 import CashSessionModal from '@/components/CashSessionModal'
 import CashRegisterModal from '@/components/CashRegisterModal'
 
@@ -27,9 +29,9 @@ interface CashSession {
   status: string
   openedAt: string
   closedAt?: string
-  openingBalance: number
-  currentBalance?: number
-  finalBalance?: number
+  initialCash: number
+  expectedCash?: number
+  actualCash?: number
   difference?: number
   cashRegister: {
     id: number
@@ -49,16 +51,18 @@ interface CashSession {
     total: number
     createdAt: string
   }>
-  movements: Array<{
+  cashMovements: Array<{
     id: number
-    type: string
+    movementType: string
     amount: number
-    description: string
+    reason: string
     createdAt: string
   }>
 }
 
 export default function CashManagement() {
+  const { data: session } = useSession()
+  const router = useRouter()
   const [registers, setRegisters] = useState<CashRegister[]>([])
   const [sessions, setSessions] = useState<CashSession[]>([])
   const [loading, setLoading] = useState(true)
@@ -66,6 +70,25 @@ export default function CashManagement() {
   const [modalMode, setModalMode] = useState<'open' | 'close'>('open')
   const [selectedSessionId, setSelectedSessionId] = useState<number | undefined>()
   const [registerModalOpen, setRegisterModalOpen] = useState(false)
+
+  // Verificar permisos
+  useEffect(() => {
+    if (session && !['ADMIN', 'RECEPTIONIST'].includes(session.user.role)) {
+      router.push('/dashboard')
+      return
+    }
+  }, [session, router])
+
+  if (session && !['ADMIN', 'RECEPTIONIST'].includes(session.user.role)) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-center">
+          <h3 className="text-lg font-medium text-gray-900 mb-2">Acceso Restringido</h3>
+          <p className="text-gray-600">No tienes permisos para acceder a la gestión de cajas.</p>
+        </div>
+      </div>
+    )
+  }
 
   useEffect(() => {
     fetchData()
@@ -172,47 +195,57 @@ export default function CashManagement() {
           <h2 className="text-lg font-semibold text-gray-900 mb-4">🟢 Cajas Abiertas</h2>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {openSessions.map((session) => (
-              <div key={session.id} className="bg-white rounded-lg shadow p-6 border-l-4 border-green-500">
+              <div key={session.id} className="bg-white rounded-lg shadow-md border border-gray-200 p-5 hover:shadow-lg transition-shadow">
                 <div className="flex justify-between items-start mb-4">
-                  <div>
-                    <h3 className="font-semibold text-gray-900">{session.cashRegister.name}</h3>
-                    <p className="text-sm text-gray-600">{session.cashRegister.location}</p>
+                  <div className="flex items-center space-x-3">
+                    <div className="w-3 h-3 bg-green-500 rounded-full animate-pulse"></div>
+                    <div>
+                      <h3 className="font-semibold text-gray-900 text-lg">{session.cashRegister.name}</h3>
+                      <p className="text-sm text-gray-600">{session.cashRegister.location}</p>
+                    </div>
                   </div>
-                  <span className={`px-2 py-1 rounded text-xs font-medium ${getStatusColor(session.status)}`}>
-                    {session.status}
+                  <span className="px-3 py-1 bg-green-100 text-green-800 rounded-full text-xs font-medium">
+                    ABIERTA
                   </span>
                 </div>
 
-                <div className="space-y-2 mb-4">
-                  <div className="flex justify-between">
-                    <span className="text-sm text-gray-600">Apertura:</span>
-                    <span className="text-sm font-medium">{formatCurrency(session.openingBalance)}</span>
+                <div className="grid grid-cols-2 gap-4 mb-4">
+                  <div className="bg-gray-50 p-3 rounded-lg">
+                    <p className="text-xs text-gray-500 mb-1">Balance Inicial</p>
+                    <p className="text-sm font-semibold text-gray-900">{formatCurrency(session.initialCash)}</p>
                   </div>
-                  <div className="flex justify-between">
-                    <span className="text-sm text-gray-600">Balance Actual:</span>
-                    <span className="text-sm font-medium text-green-600">
-                      {formatCurrency(session.currentBalance || 0)}
-                    </span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-sm text-gray-600">Ventas:</span>
-                    <span className="text-sm font-medium">{session.sales.length}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-sm text-gray-600">Abierto por:</span>
-                    <span className="text-sm font-medium">{session.openedBy.name}</span>
+                  <div className="bg-blue-50 p-3 rounded-lg">
+                    <p className="text-xs text-gray-500 mb-1">Balance Esperado</p>
+                    <p className="text-sm font-semibold text-blue-700">
+                      {formatCurrency(session.expectedCash || session.initialCash)}
+                    </p>
                   </div>
                 </div>
 
-                <div className="text-xs text-gray-500 mb-4">
-                  Abierto: {formatDateTime(session.openedAt)}
+                <div className="flex justify-between items-center mb-4 p-3 bg-gray-50 rounded-lg">
+                  <div className="text-center">
+                    <p className="text-xs text-gray-500">Ventas</p>
+                    <p className="text-lg font-bold text-gray-900">{session.sales.length}</p>
+                  </div>
+                  <div className="text-center">
+                    <p className="text-xs text-gray-500">Movimientos</p>
+                    <p className="text-lg font-bold text-gray-900">{session.cashMovements?.length || 0}</p>
+                  </div>
+                  <div className="text-center">
+                    <p className="text-xs text-gray-500">Operador</p>
+                    <p className="text-sm font-medium text-gray-900">{session.openedBy.name}</p>
+                  </div>
+                </div>
+
+                <div className="text-xs text-gray-500 mb-4 text-center">
+                  Abierta: {formatDateTime(session.openedAt)}
                 </div>
 
                 <button
                   onClick={() => handleCloseCash(session.id)}
-                  className="w-full px-3 py-2 bg-red-600 text-white rounded hover:bg-red-700 transition-colors text-sm"
+                  className="w-full px-4 py-3 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors font-medium"
                 >
-                  Cerrar Caja
+                  🔒 Cerrar Sesión de Caja
                 </button>
               </div>
             ))}
@@ -301,10 +334,10 @@ export default function CashManagement() {
                         </div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                        {formatCurrency(session.openingBalance)}
+                        {formatCurrency(session.initialCash)}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                        {formatCurrency(session.finalBalance || 0)}
+                        {formatCurrency(session.actualCash || 0)}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm">
                         <span className={`${

@@ -1,6 +1,8 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { useSession } from 'next-auth/react'
+import { useRouter } from 'next/navigation'
 
 interface Product {
   id: number
@@ -59,6 +61,8 @@ interface SaleItem {
 }
 
 export default function SalesInterface() {
+  const { data: session } = useSession()
+  const router = useRouter()
   const [products, setProducts] = useState<Product[]>([])
   const [services, setServices] = useState<Service[]>([])
   const [owners, setOwners] = useState<Owner[]>([])
@@ -74,9 +78,28 @@ export default function SalesInterface() {
   const [notes, setNotes] = useState('')
   const [processing, setProcessing] = useState(false)
 
+  // Verificar permisos
+  useEffect(() => {
+    if (session && !['ADMIN', 'RECEPTIONIST'].includes(session.user.role)) {
+      router.push('/dashboard')
+      return
+    }
+  }, [session, router])
+
   useEffect(() => {
     fetchData()
   }, [])
+
+  if (session && !['ADMIN', 'RECEPTIONIST'].includes(session.user.role)) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-center">
+          <h3 className="text-lg font-medium text-gray-900 mb-2">Acceso Restringido</h3>
+          <p className="text-gray-600">No tienes permisos para acceder al sistema de ventas.</p>
+        </div>
+      </div>
+    )
+  }
 
   const fetchData = async () => {
     setLoading(true)
@@ -164,10 +187,9 @@ export default function SalesInterface() {
           type,
           serviceId: item.id,
           name: item.name,
-          code: service.code,
-          unitPrice: service.basePrice,
+          unitPrice: service.price,
           quantity: 1,
-          subtotal: service.basePrice
+          subtotal: service.price
         }])
       }
     }
@@ -240,7 +262,33 @@ export default function SalesInterface() {
 
       if (response.ok) {
         const sale = await response.json()
-        alert(`Venta procesada exitosamente. ID: ${sale.id}`)
+        
+        // Generar y descargar PDF automáticamente
+        if (sale.receipt?.id) {
+          try {
+            const pdfResponse = await fetch(`/api/receipts/${sale.receipt.id}/pdf`)
+            if (pdfResponse.ok) {
+              const blob = await pdfResponse.blob()
+              const url = window.URL.createObjectURL(blob)
+              const a = document.createElement('a')
+              a.href = url
+              a.download = `comprobante-${sale.receipt.receiptNumber}.pdf`
+              document.body.appendChild(a)
+              a.click()
+              document.body.removeChild(a)
+              window.URL.revokeObjectURL(url)
+              
+              alert(`Venta procesada exitosamente. ID: ${sale.id}\nComprobante: ${sale.receipt.receiptNumber}`)
+            } else {
+              alert(`Venta procesada exitosamente. ID: ${sale.id}\nError al generar PDF del comprobante.`)
+            }
+          } catch (pdfError) {
+            console.error('Error generating PDF:', pdfError)
+            alert(`Venta procesada exitosamente. ID: ${sale.id}\nError al generar PDF del comprobante.`)
+          }
+        } else {
+          alert(`Venta procesada exitosamente. ID: ${sale.id}\nRecibo no generado.`)
+        }
         
         // Reset form
         setSaleItems([])
@@ -376,7 +424,7 @@ export default function SalesInterface() {
                 className="bg-white border border-gray-200 rounded-lg p-4 hover:shadow-md cursor-pointer transition-shadow"
               >
                 <h3 className="font-medium text-gray-900 mb-1">{product.name}</h3>
-                <p className="text-sm text-gray-500 mb-2">{product.category.name}</p>
+                <p className="text-sm text-gray-500 mb-2">{product.category?.name || 'Sin categoría'}</p>
                 <div className="flex justify-between items-center">
                   <span className="text-lg font-bold text-green-600">
                     {formatCurrency(product.unitPrice)}
@@ -398,15 +446,12 @@ export default function SalesInterface() {
                 <p className="text-sm text-gray-500 mb-2">{service.category}</p>
                 <div className="flex justify-between items-center">
                   <span className="text-lg font-bold text-blue-600">
-                    {formatCurrency(service.basePrice)}
+                    {formatCurrency(service.price)}
                   </span>
-                  {service.duration && (
-                    <span className="text-xs text-gray-500">
-                      {service.duration} min
-                    </span>
-                  )}
                 </div>
-                <p className="text-xs text-gray-400 mt-1">{service.code}</p>
+                {service.description && (
+                  <p className="text-xs text-gray-400 mt-1">{service.description}</p>
+                )}
               </div>
             ))}
           </div>
