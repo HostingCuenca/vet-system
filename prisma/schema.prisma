@@ -664,8 +664,8 @@ model Receipt {
   id             Int           @id @default(autoincrement())
   receiptNumber  String        @unique @map("receipt_number") // VET001, VET002...
   saleId         Int?          @unique @map("sale_id") // Conecta con Sale si viene de caja
-  petId          Int           @map("pet_id")
-  ownerId        Int           @map("owner_id")
+  petId          Int?          @map("pet_id")
+  ownerId        Int?          @map("owner_id")
   veterinarianId Int?          @map("veterinarian_id")
   issueDate      DateTime      @map("issue_date") @db.Date
   totalAmount    Decimal       @map("total_amount") @db.Decimal(10, 2)
@@ -677,8 +677,8 @@ model Receipt {
 
   // Relaciones
   sale         Sale?         @relation(fields: [saleId], references: [id])
-  pet          Pet           @relation(fields: [petId], references: [id])
-  owner        Owner         @relation(fields: [ownerId], references: [id])
+  pet          Pet?          @relation(fields: [petId], references: [id])
+  owner        Owner?        @relation(fields: [ownerId], references: [id])
   veterinarian User?         @relation("ReceiptVeterinarian", fields: [veterinarianId], references: [id])
   creator      User          @relation("ReceiptCreatedBy", fields: [createdBy], references: [id])
   items        ReceiptItem[]
